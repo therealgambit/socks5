@@ -39,47 +39,27 @@ auto_install() {
         cp "$0" "$install_path"
         chmod +x "$install_path"
         
-        # Создаем wrapper функцию для удобных подкоманд
+        # Создаем упрощенную wrapper функцию
         cat > /usr/local/bin/socks-wrapper.sh << 'EOF'
 #!/bin/bash
 socks() {
     local script_path="/usr/local/bin/socks"
     
     case "${1:-menu}" in
-        "menu"|"")
-            sudo "$script_path"
-            ;;
-        "new"|"create")
-            sudo "$script_path" --quick
-            ;;
-        "list"|"show")
-            sudo "$script_path" --show
-            ;;
-        "remove"|"delete")
-            sudo "$script_path" --remove
-            ;;
-        "uninstall"|"purge")
-            sudo "$script_path" --uninstall
-            ;;
         "help"|"-h"|"--help")
             echo -e "\033[0;34mSOCKS5 Proxy Manager\033[0m"
-            echo "Использование: socks [команда]"
+            echo "Использование: socks"
             echo ""
-            echo "Доступные команды:"
-            echo "  menu        - интерактивное меню (по умолчанию)"
-            echo "  new/create  - быстро создать новое подключение"
-            echo "  list/show   - показать все подключения"
-            echo "  remove      - удалить подключение"
-            echo "  uninstall   - полное удаление системы"
-            echo "  help        - показать эту справку"
+            echo "Команда запускает интерактивное меню для управления SOCKS5 прокси-серверами"
             echo ""
-            echo "Примеры:"
-            echo "  socks           # открыть меню"
-            echo "  socks new       # создать подключение"
-            echo "  socks list      # показать все"
+            echo "Возможности:"
+            echo "  • Просмотр всех подключений"
+            echo "  • Создание новых подключений"
+            echo "  • Удаление подключений"
+            echo "  • Полное удаление системы"
             ;;
         *)
-            sudo "$script_path" "$@"
+            sudo "$script_path"
             ;;
     esac
 }
@@ -107,13 +87,9 @@ EOF
         print_status "Установка завершена!"
         print_status "Команда '$script_name' теперь доступна глобально"
         echo ""
-        echo -e "${CYAN}Доступные команды:${NC}"
-        echo "  socks           # интерактивное меню"
-        echo "  socks new       # создать подключение"
-        echo "  socks list      # показать все подключения"
-        echo "  socks remove    # удалить подключение"
-        echo "  socks uninstall # полное удаление"
-        echo "  socks help      # справка"
+        echo -e "${CYAN}Использование:${NC}"
+        echo "  socks       # интерактивное меню"
+        echo "  socks help  # справка"
         echo ""
         
         read -p "Нажмите Enter для перехода в меню..."
@@ -488,24 +464,19 @@ if ! command -v danted &> /dev/null; then
     install_dependencies
 fi
 
-# Запуск меню или быстрая установка
+# Запуск меню
 if [[ $# -eq 0 ]]; then
     main_menu
 else
     case $1 in
-        --quick) create_connection ;;
-        --show) show_connections ;;
-        --remove) remove_connection ;;
-        --uninstall) uninstall_completely ;;
         --help) 
             echo -e "${BLUE}SOCKS5 Proxy Manager${NC}"
-            echo "Доступные команды:"
-            echo "  socks             # меню"
-            echo "  socks new         # создать подключение"
-            echo "  socks list        # показать все"
-            echo "  socks remove      # удалить подключение"
-            echo "  socks uninstall   # полное удаление"
+            echo "Использование: socks"
+            echo ""
+            echo "Команда запускает интерактивное меню для управления SOCKS5 прокси-серверами"
             ;;
-        *) echo "Использование: $0 [--quick|--show|--remove|--uninstall|--help]" ;;
+        *)
+            main_menu
+            ;;
     esac
 fi
