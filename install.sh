@@ -58,6 +58,9 @@ socks() {
         "remove"|"delete")
             sudo "$script_path" --remove
             ;;
+        "uninstall"|"purge")
+            sudo "$script_path" --uninstall
+            ;;
         "help"|"-h"|"--help")
             echo -e "\033[0;34mSOCKS5 Proxy Manager\033[0m"
             echo "Использование: socks [команда]"
@@ -67,6 +70,7 @@ socks() {
             echo "  new/create  - быстро создать новое подключение"
             echo "  list/show   - показать все подключения"
             echo "  remove      - удалить подключение"
+            echo "  uninstall   - полное удаление системы"
             echo "  help        - показать эту справку"
             echo ""
             echo "Примеры:"
@@ -108,10 +112,10 @@ EOF
         echo "  socks new       # создать подключение"
         echo "  socks list      # показать все подключения"
         echo "  socks remove    # удалить подключение"
+        echo "  socks uninstall # полное удаление"
         echo "  socks help      # справка"
         echo ""
         
-        # Предлагаем сразу запустить
         read -p "Нажмите Enter для перехода в меню..."
         exec "$install_path"
     fi
@@ -353,6 +357,100 @@ remove_connection() {
     fi
 }
 
+# Полное удаление всех компонентов SOCKS5 прокси
+uninstall_completely() {
+    print_header "ПОЛНОЕ УДАЛЕНИЕ СИСТЕМЫ"
+    print_warning "Это действие удалит ВСЕ подключения и компоненты SOCKS5 прокси!"
+    print_warning "Восстановление будет невозможно!"
+    echo ""
+    
+    read -p "Вы уверены, что хотите продолжить? (введите 'YES' для подтверждения): " confirm
+    
+    if [[ "$confirm" != "YES" ]]; then
+        print_status "Операция отменена"
+        return
+    fi
+    
+    print_status "Начинаем полное удаление..."
+    
+    # Останавливаем и удаляем все SOCKS5 сервисы
+    if [[ -s $SERVICES_FILE ]]; then
+        print_status "Остановка и удаление всех SOCKS5 подключений..."
+        while IFS=':' read -r username port password service_name; do
+            print_status "Удаление подключения: $service_name (порт $port)"
+            
+            # Остановка службы
+            systemctl stop danted-$port > /dev/null 2>&1
+            systemctl disable danted-$port > /dev/null 2>&1
+            
+            # Удаление файлов службы
+            rm -f /etc/systemd/system/danted-$port.service
+            rm -f /etc/danted-$port.conf
+            
+            # Удаление пользователя
+            userdel $username > /dev/null 2>&1
+            
+            # Удаление правил брандмауэра
+            ufw delete allow $port/tcp > /dev/null 2>&1
+            
+        done < $SERVICES_FILE
+        
+        systemctl daemon-reload
+    fi
+    
+    # Удаляем директорию конфигурации
+    print_status "Удаление конфигурационных файлов..."
+    rm -rf $CONFIG_DIR
+    
+    # Удаляем глобальную команду socks
+    print_status "Удаление глобальной команды 'socks'..."
+    rm -f /usr/local/bin/socks
+    rm -f /usr/local/bin/socks-wrapper.sh
+    
+    # Очищаем bashrc от наших записей
+    print_status "Очистка bashrc файлов..."
+    
+    # Удаляем из /etc/bash.bashrc
+    if grep -q "socks-wrapper.sh" /etc/bash.bashrc 2>/dev/null; then
+        sed -i '/# SOCKS5 Proxy Manager/d' /etc/bash.bashrc
+        sed -i '/source \/usr\/local\/bin\/socks-wrapper.sh/d' /etc/bash.bashrc
+        # Удаляем пустые строки в конце
+        sed -i -e :a -e '/^\s*$/N; /^\s*\n$/ba' -e '/^\s*$/d' /etc/bash.bashrc
+    fi
+    
+    # Удаляем из /root/.bashrc
+    if grep -q "socks-wrapper.sh" /root/.bashrc 2>/dev/null; then
+        sed -i '/# SOCKS5 Proxy Manager/d' /root/.bashrc
+        sed -i '/source \/usr\/local\/bin\/socks-wrapper.sh/d' /root/.bashrc
+        # Удаляем пустые строки в конце
+        sed -i -e :a -e '/^\s*$/N; /^\s*\n$/ba' -e '/^\s*$/d' /root/.bashrc
+    fi
+    
+    # Опционально: удаление dante-server (спрашиваем пользователя)
+    echo ""
+    read -p "Удалить пакет dante-server из системы? [y/N]: " remove_dante
+    if [[ "$remove_dante" =~ ^[Yy]$ ]]; then
+        print_status "Удаление пакета dante-server..."
+        apt remove --purge -y dante-server > /dev/null 2>&1
+        apt autoremove -y > /dev/null 2>&1
+    fi
+    
+    # Очистка функций из текущего сеанса
+    unset -f socks > /dev/null 2>&1
+    
+    print_status "Удаление завершено!"
+    echo ""
+    print_warning "Рекомендуется перезапустить терминал для полной очистки"
+    print_warning "Команды 'socks' больше не доступны"
+    echo ""
+    
+    # Предлагаем выйти из скрипта
+    read -p "Выйти из скрипта? [Y/n]: " exit_choice
+    if [[ ! "$exit_choice" =~ ^[Nn]$ ]]; then
+        exit 0
+    fi
+}
+
 # Главное меню
 main_menu() {
     while true; do
@@ -361,15 +459,17 @@ main_menu() {
         echo "1) Показать все подключения"
         echo "2) Создать новое подключение"
         echo "3) Удалить подключение"
-        echo "4) Выход"
+        echo "4) Полное удаление системы"
+        echo "5) Выход"
         echo ""
-        read -p "Выберите действие [1-4]: " choice
+        read -p "Выберите действие [1-5]: " choice
         
         case $choice in
             1) show_connections; read -p "Нажмите Enter для продолжения..." ;;
             2) create_connection; read -p "Нажмите Enter для продолжения..." ;;
             3) remove_connection; read -p "Нажмите Enter для продолжения..." ;;
-            4) exit 0 ;;
+            4) uninstall_completely; read -p "Нажмите Enter для продолжения..." ;;
+            5) exit 0 ;;
             *) print_error "Неверный выбор"; sleep 2 ;;
         esac
     done
@@ -396,14 +496,16 @@ else
         --quick) create_connection ;;
         --show) show_connections ;;
         --remove) remove_connection ;;
+        --uninstall) uninstall_completely ;;
         --help) 
             echo -e "${BLUE}SOCKS5 Proxy Manager${NC}"
             echo "Доступные команды:"
-            echo "  socks           # меню"
-            echo "  socks new       # создать подключение"
-            echo "  socks list      # показать все"
-            echo "  socks remove    # удалить подключение"
+            echo "  socks             # меню"
+            echo "  socks new         # создать подключение"
+            echo "  socks list        # показать все"
+            echo "  socks remove      # удалить подключение"
+            echo "  socks uninstall   # полное удаление"
             ;;
-        *) echo "Использование: $0 [--quick|--show|--remove|--help]" ;;
+        *) echo "Использование: $0 [--quick|--show|--remove|--uninstall|--help]" ;;
     esac
 fi
