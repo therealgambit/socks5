@@ -38,7 +38,7 @@ fi
 print_header "SOCKS5 PROXY SERVER INSTALLER"
 
 print_status "Обновление пакетов и установка зависимостей..."
-apt update && apt install -y dante-server apache2-utils > /dev/null 2>&1
+apt update > /dev/null 2>&1 && apt install -y dante-server apache2-utils > /dev/null 2>&1
 
 if [ $? -ne 0 ]; then
     print_error "Ошибка при установке пакетов"
@@ -135,7 +135,7 @@ if ! systemctl is-active --quiet danted; then
 fi
 
 # Получение внешнего IP
-ip=$(curl -s ifconfig.me)
+ip=$(curl -4 -s ifconfig.me)
 
 echo ""
 print_header "УСТАНОВКА ЗАВЕРШЕНА"
