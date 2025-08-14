@@ -25,10 +25,101 @@ print_header() {
     echo -e "${BLUE}================================${NC}"
 }
 
-# Создание директории конфигурации
-create_config_dir() {
-    mkdir -p $CONFIG_DIR
-    touch $USERS_FILE $SERVICES_FILE
+# АВТОУСТАНОВКА СКРИПТА
+auto_install() {
+    local script_name="socks"
+    local install_path="/usr/local/bin/$script_name"
+    
+    # Проверяем, не установлен ли уже скрипт
+    if [[ "$0" != "$install_path" ]] && [[ ! -f "$install_path" ]]; then
+        print_header "АВТОМАТИЧЕСКАЯ УСТАНОВКА"
+        print_status "Установка команды '$script_name' в систему..."
+        
+        # Копируем скрипт в системную папку
+        cp "$0" "$install_path"
+        chmod +x "$install_path"
+        
+        # Создаем wrapper функцию для удобных подкоманд
+        cat > /usr/local/bin/socks-wrapper.sh << 'EOF'
+#!/bin/bash
+socks() {
+    local script_path="/usr/local/bin/socks"
+    
+    case "${1:-menu}" in
+        "menu"|"")
+            sudo "$script_path"
+            ;;
+        "new"|"create")
+            sudo "$script_path" --quick
+            ;;
+        "list"|"show")
+            sudo "$script_path" --show
+            ;;
+        "remove"|"delete")
+            sudo "$script_path" --remove
+            ;;
+        "help"|"-h"|"--help")
+            echo -e "\033[0;34mSOCKS5 Proxy Manager\033[0m"
+            echo "Использование: socks [команда]"
+            echo ""
+            echo "Доступные команды:"
+            echo "  menu        - интерактивное меню (по умолчанию)"
+            echo "  new/create  - быстро создать новое подключение"
+            echo "  list/show   - показать все подключения"
+            echo "  remove      - удалить подключение"
+            echo "  help        - показать эту справку"
+            echo ""
+            echo "Примеры:"
+            echo "  socks           # открыть меню"
+            echo "  socks new       # создать подключение"
+            echo "  socks list      # показать все"
+            ;;
+        *)
+            sudo "$script_path" "$@"
+            ;;
+    esac
+}
+
+# Экспортируем функцию
+export -f socks
+EOF
+
+        chmod +x /usr/local/bin/socks-wrapper.sh
+        
+        # Добавляем функцию в bashrc для всех пользователей
+        if ! grep -q "socks-wrapper.sh" /etc/bash.bashrc 2>/dev/null; then
+            echo "" >> /etc/bash.bashrc
+            echo "# SOCKS5 Proxy Manager" >> /etc/bash.bashrc
+            echo "source /usr/local/bin/socks-wrapper.sh" >> /etc/bash.bashrc
+        fi
+        
+        # Добавляем и в профиль пользователя root
+        if ! grep -q "socks-wrapper.sh" /root/.bashrc 2>/dev/null; then
+            echo "" >> /root/.bashrc
+            echo "# SOCKS5 Proxy Manager" >> /root/.bashrc  
+            echo "source /usr/local/bin/socks-wrapper.sh" >> /root/.bashrc
+        fi
+        
+        print_status "Установка завершена!"
+        print_status "Команда '$script_name' теперь доступна глобально"
+        echo ""
+        echo -e "${CYAN}Доступные команды:${NC}"
+        echo "  socks           # интерактивное меню"
+        echo "  socks new       # создать подключение"
+        echo "  socks list      # показать все подключения"
+        echo "  socks remove    # удалить подключение"
+        echo "  socks help      # справка"
+        echo ""
+        print_warning "Перезайдите в терминал или выполните: source ~/.bashrc"
+        echo ""
+        
+        # Предлагаем сразу запустить
+        read -p "Запустить меню сейчас? [Y/n]: " run_now
+        if [[ ! "$run_now" =~ ^[Nn]$ ]]; then
+            exec "$install_path"
+        fi
+        exit 0
+    fi
 }
 
 # Проверка прав администратора
@@ -37,6 +128,12 @@ check_root() {
         print_error "Этот скрипт должен быть запущен с правами root"
         exit 1
     fi
+}
+
+# Создание директории конфигурации
+create_config_dir() {
+    mkdir -p $CONFIG_DIR
+    touch $USERS_FILE $SERVICES_FILE
 }
 
 # Функция для генерации случайного порта
@@ -135,6 +232,7 @@ create_connection() {
     
     # Определение интерфейса
     INTERFACE=$(ip route get 8.8.8.8 | awk -- '{print $5}' | head -n 1)
+    print_status "Обнаружен сетевой интерфейс: $INTERFACE"
     
     # Создание пользователя
     print_status "Создание системного пользователя..."
@@ -273,17 +371,20 @@ main_menu() {
         read -p "Выберите действие [1-4]: " choice
         
         case $choice in
-            1) show_connections; read -p "Нажмите Enter для продолжения..."; ;;
-            2) create_connection; read -p "Нажмите Enter для продолжения..."; ;;
-            3) remove_connection; read -p "Нажмите Enter для продолжения..."; ;;
-            4) exit 0; ;;
-            *) print_error "Неверный выбор"; sleep 2; ;;
+            1) show_connections; read -p "Нажмите Enter для продолжения..." ;;
+            2) create_connection; read -p "Нажмите Enter для продолжения..." ;;
+            3) remove_connection; read -p "Нажмите Enter для продолжения..." ;;
+            4) exit 0 ;;
+            *) print_error "Неверный выбор"; sleep 2 ;;
         esac
     done
 }
 
-# Основная логика
+# Запускаем автоустановку
 check_root
+auto_install
+
+# Основная логика
 create_config_dir
 
 # Проверка наличия dante-server
@@ -297,8 +398,17 @@ if [[ $# -eq 0 ]]; then
     main_menu
 else
     case $1 in
-        --quick) create_connection; ;;
-        --show) show_connections; ;;
-        *) echo "Использование: $0 [--quick|--show]"; ;;
+        --quick) create_connection ;;
+        --show) show_connections ;;
+        --remove) remove_connection ;;
+        --help) 
+            echo -e "${BLUE}SOCKS5 Proxy Manager${NC}"
+            echo "Доступные команды:"
+            echo "  socks           # меню"
+            echo "  socks new       # создать подключение"
+            echo "  socks list      # показать все"
+            echo "  socks remove    # удалить подключение"
+            ;;
+        *) echo "Использование: $0 [--quick|--show|--remove|--help]" ;;
     esac
 fi
