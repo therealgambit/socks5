@@ -110,15 +110,10 @@ EOF
         echo "  socks remove    # удалить подключение"
         echo "  socks help      # справка"
         echo ""
-        print_warning "Перезайдите в терминал или выполните: source ~/.bashrc"
-        echo ""
         
         # Предлагаем сразу запустить
-        read -p "Запустить меню сейчас? [Y/n]: " run_now
-        if [[ ! "$run_now" =~ ^[Nn]$ ]]; then
-            exec "$install_path"
-        fi
-        exit 0
+        read -p "Нажмите Enter для перехода в меню..."
+        exec "$install_path"
     fi
 }
 
